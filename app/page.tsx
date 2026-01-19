@@ -30,6 +30,7 @@ type LedgerRow = {
 type SettingsRow = {
   user_id: string;
   background_url: string | null;
+  board_background_url: string | null;
   manage_pin: string | null;
   kid_mode?: boolean;
 };
@@ -107,13 +108,13 @@ export default function Home() {
     // settings (ensure row exists)
     const s = await supabase
       .from("settings")
-      .select("user_id, background_url, manage_pin, kid_mode")
+      .select("user_id, background_url, board_background_url, manage_pin, kid_mode")
       .eq("user_id", uid)
       .maybeSingle();
 
     if (!s.data) {
       // create initial settings row
-      await supabase.from("settings").insert({ user_id: uid, kid_mode: false });
+      await supabase.from("settings").insert({ user_id: uid, kid_mode: false, board_background_url: null });
 
       const s2 = await supabase
         .from("settings")
@@ -353,6 +354,40 @@ export default function Home() {
 
     const up = await supabase.from("settings").upsert({ user_id: userId, background_url: url });
     if (up.error) return alert(up.error.message);
+
+    await loadAll(userId);
+  }
+
+  async function uploadBoardBackground(file: File) {
+    if (!userId) return;
+
+    const ext = file.name.split(".").pop() || "jpg";
+    const filename = `board_bg_${userId}_${Date.now()}.${ext}`;
+
+    const upload = await supabase.storage
+      .from("backgrounds")
+      .upload(filename, file, { upsert: true });
+
+    if (upload.error) {
+      alert(upload.error.message);
+      return;
+    }
+
+    const { data } = supabase.storage
+      .from("backgrounds")
+      .getPublicUrl(filename);
+
+    const url = data.publicUrl;
+
+    const res = await supabase
+      .from("settings")
+      .update({ board_background_url: url })
+      .eq("user_id", userId);
+
+    if (res.error) {
+      alert(res.error.message);
+      return;
+    }
 
     await loadAll(userId);
   }
@@ -697,6 +732,32 @@ export default function Home() {
 
                   {settings?.background_url ? (
                     <p className="text-xs spider-faint mt-2 break-all">Current: {settings.background_url}</p>
+                  ) : null}
+                </div>
+
+                {/* Board Background Upload */}
+                <div className="spider-panel p-4">
+                  <h2 className="text-lg font-extrabold text-white mb-1">
+                    Board Background
+                  </h2>
+                  <p className="spider-muted text-sm">
+                    Background for the kid-facing Points Board display.
+                  </p>
+
+                  <input
+                    className="mt-3 spider-input rounded-xl p-3 w-full"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadBoardBackground(f);
+                    }}
+                  />
+
+                  {settings?.board_background_url ? (
+                    <p className="text-xs spider-faint mt-2 break-all">
+                      Current: {settings.board_background_url}
+                    </p>
                   ) : null}
                 </div>
 
