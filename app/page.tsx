@@ -44,8 +44,12 @@ export default function Home() {
 
 
   // Auth UI
-  const [email, setEmail] = useState("");
   const [authMsg, setAuthMsg] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [showPassword, setShowPassword] = useState(false);
+
 
   // App data
   const [settings, setSettings] = useState<SettingsRow | null>(null);
@@ -93,10 +97,63 @@ export default function Home() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function signIn() {
+  async function signInWithPassword() {
     setAuthMsg("");
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    setAuthMsg(error ? error.message : "Check your email for the sign-in link.");
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) setAuthMsg(friendlyAuthError(error.message));;
+  }
+
+  async function signUpWithPassword() {
+    setAuthMsg("");
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    if (error) {
+      setAuthMsg(friendlyAuthError(error.message));;
+      return;
+    }
+    setAuthMsg("Account created. You can sign in now.");
+  }
+
+  async function resetPassword() {
+    setAuthMsg("");
+
+    if (!email) {
+      setAuthMsg("Enter your email first.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset`,
+    });
+
+    if (error) {
+      setAuthMsg(friendlyAuthError(error.message));;
+    } else {
+      setAuthMsg("Password reset email sent.");
+    }
+  }
+
+  function friendlyAuthError(message: string) {
+    const m = message.toLowerCase();
+
+    if (m.includes("invalid login credentials")) {
+      return "Hmm… that email/password doesn’t match. Try again or tap “Forgot password?”.";
+    }
+    if (m.includes("password should be at least")) {
+      return "Password needs to be at least 8 characters.";
+    }
+    if (m.includes("email not confirmed")) {
+      return "Please check your email and confirm your account, then try signing in again.";
+    }
+    if (m.includes("rate limit") || m.includes("too many")) {
+      return "Too many attempts—please wait a minute and try again.";
+    }
+    return message;
   }
 
   async function signOut() {
@@ -453,27 +510,97 @@ export default function Home() {
     loadAll(userId);
   }
 
-  // ---------------- AUTH SCREEN ----------------
+// ---------------- AUTH SCREEN ----------------
+  const canSubmit = email.includes("@") && password.length >= 8;
+
   if (!userId) {
     return (
       <div className="min-h-screen spider-bg bg-gradient-to-b from-red-700 to-blue-900 flex items-center justify-center p-6">
         <div className="spider-card w-full max-w-md p-6">
-          <h1 className="text-2xl font-extrabold">Spider Points 🕷️</h1>
+          <h1 className="text-2xl font-extrabold text-white">Spider Points 🕷️</h1>
           <p className="text-sm spider-muted">Sign in to sync across devices.</p>
 
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 space-y-2">
             <input
-              className="flex-1 border rounded-xl p-3"
-              placeholder="you@email.com"
+              className="spider-input rounded-xl p-3 w-full"
+              placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
             />
-            <button className="spider-btn spider-primary px-4 py-3" onClick={signIn}>
-              Sign in
-            </button>
-          </div>
 
-          {authMsg ? <p className="text-sm mt-3">{authMsg}</p> : null}
+            <div className="relative">
+              <input
+                className="spider-input rounded-xl p-3 w-full pr-12"
+                placeholder="Password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 spider-btn px-3 py-2 text-sm font-extrabold"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+
+            <button
+              className={`spider-btn spider-primary px-4 py-3 w-full font-extrabold ${
+                !canSubmit ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              disabled={!canSubmit}
+              onClick={authMode === "signin" ? signInWithPassword : signUpWithPassword}
+            >
+              {authMode === "signin" ? "Sign in" : "Create account"}
+            </button>
+
+            {authMode === "signin" && (
+              <button
+                onClick={resetPassword}
+                className="text-sm text-white/80 underline mt-2 hover:text-white transition-colors"
+              >
+                Forgot password?
+              </button>
+            )}
+
+            <button
+              onClick={() => setAuthMode(authMode === "signin" ? "signup" : "signin")}
+              className="
+                w-full
+                rounded-xl
+                border
+                border-white/20
+                bg-white/10
+                backdrop-blur
+                px-4
+                py-3
+                text-sm
+                font-bold
+                text-white
+                transition
+                hover:bg-white/20
+                hover:border-white/40
+              "
+            >
+              {authMode === "signin"
+                ? "Need an account? Sign up"
+                : "Have an account? Sign in"}
+            </button>
+
+            {authMsg ? (
+              <p className="text-sm mt-2 text-red-200 font-semibold">{authMsg}</p>
+            ) : (
+              <p className="text-xs mt-2 spider-faint">
+                Parents only 🙂 If you’re a kid, ask a grown-up for help.
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );
